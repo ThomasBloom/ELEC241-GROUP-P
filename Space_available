@@ -1,0 +1,42 @@
+library ieee;
+use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
+
+entity SPACE_AVAILABLE is
+	generic
+	(
+		DATAwidth   : integer  :=  8
+	);
+
+	port(
+		clk	  : in std_logic;		--Clock
+		load	  : in std_logic;		--Clock enable
+		reset : in std_logic;		--Async reset
+		input	  : in std_logic_vector(DATAwidth-1 downto 0);	--Data word input
+		output	  : out std_logic_vector(DATAwidth-1 downto 0)	--Data output
+	);
+end entity;
+
+
+architecture SPACE_AVAILABLE_ARCH of SPACE_AVAILABLE is
+	signal latched : std_logic_vector(DATAwidth-1 downto 0);
+	variable maxSpace : integer range 15 downto 0 := (DATAwidth);
+	variable maxSpace_slv : std_logic_vector (DATAwidth-1 downto 0);
+begin
+
+	--Connect output to internal latched signal
+	output <= latched after 10 ns;
+	
+	process (clk, reset)	
+	begin
+		if (reset = '1') then 
+			latched <= (others => '0');
+		elsif (rising_edge(clk)) then
+			if (load = '1') then 
+				maxSpace_slv := STD_LOGIC_VECTOR(TO_UNSIGNED(maxSpace, 4));	
+				latched <= std_logic_vector(unsigned(input(DATAwidth-1 downto 0)) - unsigned(maxSpace_slv(DATAwidth-1 downto 0)));
+			end if;
+		end if;
+	end process;
+
+end SPACE_AVAILABLE_ARCH;
