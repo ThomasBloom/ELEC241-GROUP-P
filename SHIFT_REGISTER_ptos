@@ -2,39 +2,45 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
-
-entity shift_register_stop is
+entity shift_register_space_available is
 	port
 	(
 		-- Input ports
-		CLK	  : in  std_logic;
-		INPUT	  : in  std_logic;
-
-		-- Output port
-		OUTPUT	  : out std_logic_vector (1 downto 0)
+		CLK	: in  std_logic;
+		DATAIN	: in  std_logic_vector(3 downto 0);
+		spi_data : in  integer range 7 downto 0; 
+		DATAOUT	: out std_logic
 	);
 end entity;
 
-architecture shift_register_stop_arch of shift_register_stop is
-type OUTPUTarray is array (1 downto 0) of std_logic;
+architecture shift_register_space_available_arch of shift_register_space_available is
+
+type OUTPUTarray is array (3 downto 0) of std_logic;
 shared variable OUTPUTarray_bus : OUTPUTarray;
-shared variable counter : integer range 2 downto 0 := 2;
-shared variable beforeOutput : std_logic_vector (1 downto 0);
+shared variable counter : integer range 4 downto 0 := 4;
+shared variable nomoresample : std_logic := '0';
+
 begin
 	process (CLK)
 	begin
-		if rising_edge(clk) then  
-			OUTPUTarray_bus(counter-1) := INPUT;
-			counter := counter - 1;
+		if rising_edge(clk) then 
+			if (spi_data = 1) then
+				if (nomoresample = '0') then
+					nomoresample := '1';
+					for I in 0 to 3 loop
+						OUTPUTarray_bus(I) := DATAIN(I);
+					end loop;
+				end if;
 			
-			if (counter = 0) then
-				for I in 0 to 1 loop
-					beforeOutput(I) := OUTPUTarray_bus(I);
-				end loop;
-				OUTPUT <= beforeOutput;
-				counter := 2;
-				OUTPUTarray_bus := (others => '0');
+				DATAOUT <= OUTPUTarray_bus(counter-1);
+				counter := counter - 1;
+				if (counter = 0) then
+					OUTPUTarray_bus := (others => '0');
+					nomoresample := '0';
+					counter := 4;
+				end if;
 			end if;
 		end if;
 	end process;
-end shift_register_stop_arch;
+
+end shift_register_space_available_arch;
