@@ -1,86 +1,96 @@
+--------------------------------------------
+--========================================--
+--= FIFO (First in first out) buffer is  =--
+--=  a way to store information until    =--
+--=  the MCU wants to do something with  =--
+--=               it.                    =--
+--========================================--
+--------------------------------------------
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
 
-entity FIFO_V3 is
+entity FIFO_V4 is
 	generic
 	(
-		FIFOwidth	: integer  :=	8;
-		DATAwidth   : integer  :=  12 --15
+		FIFOwidth	: integer  :=	8; -- The length of the FIFO buffer is 8 bits
+		DATAwidth   : integer  :=  12 -- The width of each piece of information in the buffer is 12 bits
 	);
 
 	port
 	(
 		-- Input ports
-		clk	   : in  std_logic;
-		samp		: in	std_logic;
-		reset		: in	std_logic;
-		spi_data : in  integer range 3 downto 0 := 0; 
-		data_in  : in  std_logic_vector (11	downto 0);
+		clk	   : in  std_logic; -- Input ADC clock
+		CS			: in  std_logic; -- If Chip select is 0, do not sample. If Chip select is 1, sample.
+		samp		: in	std_logic; -- Samp will be pulsed high when information is coming from the ADC.
+		reset		: in	std_logic; -- Reset is set to 1 by the FIFO_config if the MCU wants to reset
+		spi_data : in  integer range 7 downto 0 := 0; -- SPI data in comes from a shift register that turns bits into an integer
+		data_in  : in  std_logic_vector (11	downto 0); -- DATA in comes from the ADC
 
 		-- Output port
-		data_out	  : out std_logic_vector (11 downto 0);
-		space_remain : out std_logic_vector (3 downto 0);
-		overflow	  : out std_logic;
-		ready		  : out std_logic
+		data_out	  : out std_logic_vector (11 downto 0); -- Data out happens First in First out
+		space_remain : out std_logic_vector (3 downto 0); -- How much room is there in the buffer
+		overflow	  : out std_logic; -- Set high when the buffer is full
+		ready		  : out std_logic -- Set high when there is at least one piece of information inside the buffer
 	);
 end entity;
 
-architecture FIFO_V3_arch of FIFO_V3 is
-
-type FIFOarray is array (0 to FIFOwidth-1) of std_logic_vector (DATAwidth-1 downto 0);
+architecture FIFO_V4_arch of FIFO_V4 is
+type FIFOarray is array (0 to FIFOwidth-1) of std_logic_vector (DATAwidth-1 downto 0); --Create an array size 0 to 7. This is the buffer. Each bit of the array is a std_logic_vector size 11 to 0
 shared variable FIFO_Array_bus : FIFOarray;
-shared variable FIFOcounter	 : integer range 0 to FIFOwidth := 0; --15 downto 0
+shared variable FIFOcounter	 : integer range 0 to FIFOwidth := 0; --Create a counter to count how full the FIFO buffer is.
 begin
-	process (clk, spi_data)
+	process (clk, spi_data, reset)
 	begin
-		if rising_edge(clk) then --Read Sample results
-				if (samp = '1') then
-					if (spi_data = 0) then				
-						if (FIFOcounter = FIFOwidth) then
-							-- DO NOTHING
-						elsif (FIFOcounter <= FIFOwidth-1) then
-							FIFO_Array_bus(FIFOcounter) := data_in;
-							FIFOcounter := FIFOcounter + 1;
-							ready <= '1'; ---------MAYBE NOT NEEDED
-						end if;
-						space_remain <= STD_LOGIC_VECTOR(TO_UNSIGNED(FIFOcounter, 4));
+		if (reset = '1') then -- First, If reset is set high..
+			FIFO_Array_bus := (others => (others=>'0')); -- Clear the array
+			data_out <= FIFO_Array_bus(0); -- Data out = 0
+			FIFOcounter := 0; -- Reset the counter
+			overflow <= '0'; -- Reset overflow pin
+			ready <= '0'; -- Reset ready pin
+			space_remain <= STD_LOGIC_VECTOR(TO_UNSIGNED(FIFOcounter, 4));
 	
-					elsif (spi_data = 1 or spi_data = 2) then --Write to SPI
-						if (FIFOcounter = 0) then
-							-- DO NOTHING
-						elsif (FIFOcounter >= 1) then
-							data_out <= FIFO_Array_bus(0);
-							FIFOcounter := FIFOcounter - 1;
-							overflow <= '0'; ---------MAYBE NOT NEEDED
-							for I in 1 to (FIFOwidth-1) loop
-								FIFO_Array_bus(I-1) := FIFO_Array_bus(I);
-							end loop;
-						end if;
-						space_remain <= STD_LOGIC_VECTOR(TO_UNSIGNED(FIFOcounter, 4));
-			
-					elsif (reset = '1') then --Reset the device
-						FIFO_Array_bus := (others => (others=>'0'));
-						data_out <= FIFO_Array_bus(0);
-						FIFOcounter := 0;
-						overflow <= '0';
-						ready <= '0';
-						space_remain <= STD_LOGIC_VECTOR(TO_UNSIGNED(FIFOcounter, 4));
+		elsif rising_edge(clk) then -- On a rising edge..				
+			if (spi_data = 1) then --If a write command is recieved from the MCU..
+				if (samp = '1') then -- If Samp is pulsed high (after 16 clock cycles)
+					if (FIFOcounter = 0) then -- If counter is 0
+													  -- DO NOTHING
+					elsif (FIFOcounter >= 1) then -- If counter is greater than or equal to 1
+						data_out <= FIFO_Array_bus(0); --Data out is set to be the first position of the array
+						FIFOcounter := FIFOcounter - 1; -- Take one away from the counter
+						overflow <= '0'; -- Set the overflow to 0 since there is now one less piece of information in the array
+						for I in 1 to (FIFOwidth-1) loop -- In a 1 to 7 loop
+							FIFO_Array_bus(I-1) := FIFO_Array_bus(I); -- Shift all spaces in the fifo buffer to the left. Position 1 is now position 0 etc..
+						end loop;
 					end if;
+					space_remain <= STD_LOGIC_VECTOR(TO_UNSIGNED(FIFOcounter, 4)); -- display the remaining space
 				end if;
+				
+			elsif (CS = '1') then -- If Chip select is high..
+				if (samp = '1') then -- And Samp is pulsed high (after 16 clock cycles)
+					if (FIFOcounter = FIFOwidth) then -- If counter is 8
+																 -- DO NOTHING
+					elsif (FIFOcounter <= FIFOwidth-1) then -- If counter is less than or equal to 7..
+						FIFO_Array_bus(FIFOcounter) := data_in; -- Array position (counter) is set to be data in
+						FIFOcounter := FIFOcounter + 1; -- Increase the counter by 1
+						ready <= '1'; -- Set the ready to 1 since there is now at least one pieice of information in the array
+					end if;
+				space_remain <= STD_LOGIC_VECTOR(TO_UNSIGNED(FIFOcounter, 4)); -- display the remaining space
+				end if;
+			end if;
 			
-			if (FIFOcounter = 0) then
-				overflow <= '0';
-				ready <= '0';
-			elsif (FIFOcounter > 0 and FIFOcounter < FIFOwidth) then
-				overflow <= '0';
-				ready <= '1';
-			elsif (FIFOcounter = FIFOwidth) then
-				overflow <= '1';
-				ready <= '1';
+			if (FIFOcounter = 0) then -- If counter is 0
+				overflow <= '0'; -- Overflow is 0
+				ready <= '0'; -- Ready is 0
+			elsif (FIFOcounter > 0 and FIFOcounter < FIFOwidth) then -- If counter is greater than zero, but less than 8
+				overflow <= '0'; -- overflow is 0
+				ready <= '1';-- ready is 1
+			elsif (FIFOcounter = FIFOwidth) then -- If counter is equal to 8
+				overflow <= '1'; -- overflow is 1
+				ready <= '1'; -- ready is 1
 			end if;
 		end if;
 	end process;
 	
-end FIFO_V3_arch;
+end FIFO_V4_arch;
