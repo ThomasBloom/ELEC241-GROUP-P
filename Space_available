@@ -1,42 +1,41 @@
+--------------------------------------------
+--========================================--
+--= Space Available looks at the buffer  =--
+--=  and sees how full it is. The space  =--
+--=    that remains is output into an    =--
+--=  integer, which is then sent to MCU  =--
+--========================================--
+--------------------------------------------
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
-entity SPACE_AVAILABLE is
-	generic
-	(
-		DATAwidth   : integer  :=  8
-	);
 
-	port(
-		clk	  : in std_logic;		--Clock
-		load	  : in std_logic;		--Clock enable
-		reset : in std_logic;		--Async reset
-		input	  : in std_logic_vector(DATAwidth-1 downto 0);	--Data word input
-		output	  : out std_logic_vector(DATAwidth-1 downto 0)	--Data output
+entity SPACE_AVAILABLE is
+	port
+	(
+		-- Input ports
+		clk	   : in  std_logic; -- INPUt ADC clock
+		spi_data : in  integer range 7 downto 0; -- SPI interface, set to 5 to read from register
+		data_in  : in  std_logic_vector (3	downto 0); -- space_remains in from buffer
+
+		-- Output port
+		data_out	  : out std_logic_vector (3 downto 0) -- Data out is 8 - space_remains
+
 	);
 end entity;
 
-
-architecture SPACE_AVAILABLE_ARCH of SPACE_AVAILABLE is
-	signal latched : std_logic_vector(DATAwidth-1 downto 0);
-	variable maxSpace : integer range 15 downto 0 := (DATAwidth);
-	variable maxSpace_slv : std_logic_vector (DATAwidth-1 downto 0);
+architecture SPACE_AVAILABLE_arch of SPACE_AVAILABLE is
+shared variable datainInt		 : integer range 8 downto 0 := 0; -- Create an integer to store the value of converted data in
 begin
-
-	--Connect output to internal latched signal
-	output <= latched after 10 ns;
-	
-	process (clk, reset)	
+	process (clk)
 	begin
-		if (reset = '1') then 
-			latched <= (others => '0');
-		elsif (rising_edge(clk)) then
-			if (load = '1') then 
-				maxSpace_slv := STD_LOGIC_VECTOR(TO_UNSIGNED(maxSpace, 4));	
-				latched <= std_logic_vector(unsigned(input(DATAwidth-1 downto 0)) - unsigned(maxSpace_slv(DATAwidth-1 downto 0)));
+		if rising_edge(clk) then -- on rising clock edge
+			if(spi_data = 5) then -- If SPI input is 5
+				datainInt := to_integer(unsigned(data_in)); -- Convert Data_in into an integer so math can be done on it
+				datainInt := 8 - datainInt; -- 8 - Data_in
+				data_out <= std_logic_vector(to_unsigned(datainInt, 4)); -- Convert data_in_Integer into a std_logic_vector to send to a shift register to communicate with the MCU.
 			end if;
 		end if;
 	end process;
-
-end SPACE_AVAILABLE_ARCH;
+end SPACE_AVAILABLE_arch;
