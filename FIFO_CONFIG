@@ -1,0 +1,73 @@
+library ieee;
+use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
+
+
+entity FIFO_CONFIG is
+	generic
+	(
+		FIFOCONFIG_WIDTH	: integer  :=	8
+	);
+	port
+	(
+		-- Input ports
+		clk	   : in  std_logic;
+		samp 		: in  std_logic;
+		reset  	: in  std_logic;
+		avail		: in  std_logic;
+		overflow : in  std_logic;
+		load		: in 	std_logic;
+
+		-- Output port
+		sampout		: out std_logic;
+		resetout		: out std_logic;
+		availout 	: out std_logic;
+		overflowout : out std_logic
+	);
+end entity;
+
+architecture FIFO_CONFIG_ARCH of FIFO_CONFIG is
+type FIFO_CONFIG_ARRAY is array (0 to FIFOCONFIG_WIDTH-1) of std_logic;
+shared variable FIFO_CONFIG_BUS : FIFO_CONFIG_ARRAY;
+begin
+
+	process (clk)
+	begin
+		if rising_edge(clk) then
+			if (samp = '1') then
+				FIFO_CONFIG_BUS(6) := '1';
+			elsif (samp = '0') then
+				FIFO_CONFIG_BUS(6) := '0';
+			end if;
+				
+			if (reset = '1') then
+				FIFO_CONFIG_BUS(7) := '1';
+			elsif (reset = '0') then
+				FIFO_CONFIG_BUS(7) := '0';
+			end if;
+				
+			if (avail = '1') then
+				FIFO_CONFIG_BUS(0) := '1';
+			elsif (avail = '0') then
+				FIFO_CONFIG_BUS(0) := '0';
+			end if;
+				
+			if (overflow = '1') then
+				FIFO_CONFIG_BUS(1) := '1';
+			elsif (overflow = '0') then
+				FIFO_CONFIG_BUS(1) := '0';
+			end if;
+		end if;
+	end process;
+	
+	process (clk)
+	begin
+	if (load = '1') then
+		sampout <= FIFO_CONFIG_BUS(6);
+		resetout <= FIFO_CONFIG_BUS(7);
+		availout <= FIFO_CONFIG_BUS(0);
+		overflowout <= FIFO_CONFIG_BUS(1);
+	end if;
+	end process;
+
+end FIFO_CONFIG_ARCH;
