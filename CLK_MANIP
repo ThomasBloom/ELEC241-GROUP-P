@@ -1,0 +1,63 @@
+--------------------------------------------
+--========================================--
+--= CLK MANIPULATOR TAKES THE CLOCK MADE =--
+--=   BY THE FPGA, AND DIVIDES IT FROM   =--
+--= 50 MHZ TO 1 MHZ. IT ALSO SETS UP A   =--
+--= CHIP SELECT PIN THAT STARTS THE ADC. =--
+--========================================--
+--------------------------------------------
+
+library ieee;
+use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
+
+
+entity clk_manipulator is
+	port
+	(
+		-- Input ports
+		CLK	  : in  std_logic; -- INPUT 50MhZ Clock
+		samp    : in  std_logic; -- If Samp = 1, all sampling is on. If Samp = 0, all sampling is off.
+
+		-- Output port
+		CS			  : out std_logic := '1'; -- Chip select pin must go low before the first ADC clock falling clock edge
+		ADC_CLK	  : out std_logic	:= '0'  -- ADC CLK is 50 times slower than the 50MhZ clock, working at 1MhZ
+	);
+end entity;
+
+architecture clk_manipulator_arch of clk_manipulator is
+shared variable counter : integer range 13 downto 0 := 0; -- Create a counter to count 13 clock cycles
+shared variable CScounter : integer range 25 downto 0 := 0; -- Create a counter to count (13 * 2) - 1 clock cycles.
+shared variable upordown	: std_logic := '0'; -- Create a variable to see if the ADC_CLK is high or low. 0 = low, 1 = high. 
+begin
+	process (CLK)
+	begin
+		if rising_edge(CLK) then -- On rising clock edge..
+			if (samp = '1') then	-- If samp = 1..
+				counter := counter + 1; -- Add 1 to the counter
+				if (counter = 13) then	-- If counter = 13..
+					if (upordown = '1') then -- If ADC_CLK is high..
+						upordown := '0'; -- Set ADC_CLK to low
+						ADC_CLK <= '0'; -- Set ADC_CLK to low
+						
+					elsif (upordown = '0') then --If ADC_CLK is low..
+						upordown := '1'; -- Set ADC_CLK to high
+						ADC_CLK <= '1'; -- SET ADC_CLK to high
+					end if;
+					counter := 0; -- If ADC_CLK is high or low, reset back to 0 once it reaches 13.
+				end if;
+			end if;
+		end if;
+		
+		if falling_edge(CLK) then -- On falling clock edge..
+			if (samp = '1') then -- If samp = 1..
+				if (CScounter < 25) then -- If CScounter is less than 25..
+					CScounter := CScounter + 1; -- Add 1 to the CScounter
+					if (CScounter = 25) then --If CScounter is equal to 25..
+						CS <= '0';	-- Set CS low. Do not repeat this. Hence why less than 25 before equal to.
+					end if;
+				end if;
+			end if;
+		end if;
+	end process;
+end clk_manipulator_arch;
