@@ -1,0 +1,58 @@
+--------------------------------------------
+--========================================--
+--= bitsTo11to0 is a shift register. It  =--
+--=  looks at the data coming from the   =--
+--=  ADC, and turns the serial 16 bits   =--
+--=       into 12 parrallel bits.        =--
+--========================================--
+--------------------------------------------
+
+library ieee;
+use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
+
+
+entity bitsTo11To0 is
+	port
+	(
+		-- Input ports
+		CLK	  : in  std_logic; -- Input ADC Clock
+		CS		  : in  std_logic; -- Input ADC Chip select
+		DATAIN  : in  std_logic; -- Input data from ADC
+
+		-- Output port
+		OUTPUT	  : out std_logic_vector (11 downto 0); -- Output a 12 bit number
+		FIFO_ENABLE : out std_logic := '0' -- Enable pin to tell FIFO information is coming 
+	);
+end entity;
+
+architecture bitsTo11To0_arch of bitsTo11To0 is
+type array_16_bits is array (15 downto 0) of std_logic; -- Create an array of 16 bits to store incoming ADC Data
+shared variable array_16_bits_BUS : array_16_bits;
+shared variable counter : integer range 16 downto 0 := 16; -- Create a counter to counter down all 16 bits
+shared variable beforeOutput : std_logic_vector (11 downto 0); -- Create an output 12 bit number
+begin
+	process (CLK)
+	begin
+		if falling_edge(CLK) then -- On a rising edge of the clock..
+			if (CS = '1') then -- If CS is 1
+									 -- Do nothing. Wait for Cs to be 0.
+									 
+			elsif (CS = '0') then -- If Cs is 0
+				array_16_bits_BUS(counter-1) := DATAIN; -- Array position (counter - 1) set to be equal to DATAIN. ADC sends MSB first
+				counter := counter - 1; -- Counter subtracts 1
+				FIFO_ENABLE <= '0'; -- Set FIFO_enable to 0. (Important for when it is set to 1 later on)
+				if (counter = 0) then -- If counter is 0..
+					FIFO_ENABLE <= '1'; -- Set FIFO_enable to 1. This tells the FIFO buffer that information is on its way.
+					for I in 0 to 11 loop -- Enter a loop of 12 times
+						beforeOutput(I) := array_16_bits_BUS(I); -- each loop itteration make the output position (0 to 11) equal the 16 bit array position(0 to 11). This ignores the first 4 bits, which are all 0.
+					end loop;
+					
+					OUTPUT <= beforeOutput; -- Output is set to be the output vector
+					counter := 16; -- Reset the counter
+					array_16_bits_BUS := (others => '0'); -- Reset the array bus.
+				end if;
+			end if;
+		end if;
+	end process;
+end bitsTo11To0_arch;
