@@ -1,73 +1,77 @@
+--------------------------------------------
+--========================================--
+--= FIFO config is in control of talking =--
+--=   back to the MCU, not through SPI,  =--
+--=     but also recives instruction     =--
+--=               via SPI.               =--
+--========================================--
+--------------------------------------------
+
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
 
-entity FIFO_CONFIG is
+entity FIFO_CONFIG_v2 is
 	generic
 	(
-		FIFOCONFIG_WIDTH	: integer  :=	8
+		FIFOCONFIG_WIDTH	: integer  :=	8 -- Length of register is 8 bits
 	);
 	port
 	(
 		-- Input ports
-		clk	   : in  std_logic;
-		samp 		: in  std_logic;
-		reset  	: in  std_logic;
-		avail		: in  std_logic;
-		overflow : in  std_logic;
-		load		: in 	std_logic;
+		clk	   : in  std_logic; -- Clock should be the fastest clock available (50 MhZ) in order to reduce lag.
+		samp 		: in  integer range 7 downto 0 := 0; -- SPI interface, Set to 1 when blue button is pressed, Can only be set to 0 when reset is set to 1.
+		avail		: in  std_logic; -- The "Ready" bit. It goes high when a there is at least one number inside the FIFO buffer. The MCU reads this pin and checks if it is high or low.
+		overflow : in  std_logic; -- The Overflow bit. It goes high when there is no more room left in the buffer. The MCU reads this pin and checks if it high or low.
+		reset  	: in  integer range 7 downto 0 := 0; -- SPI interface, Set to 1 when instructed by the MCU
 
 		-- Output port
-		sampout		: out std_logic;
-		resetout		: out std_logic;
-		availout 	: out std_logic;
-		overflowout : out std_logic
+		sampout		: out std_logic; -- Sample out
+		resetout		: out std_logic; -- Reset out
+		availout 	: out std_logic; -- ready out
+		overflowout : out std_logic -- overflow out
 	);
 end entity;
 
-architecture FIFO_CONFIG_ARCH of FIFO_CONFIG is
-type FIFO_CONFIG_ARRAY is array (0 to FIFOCONFIG_WIDTH-1) of std_logic;
+architecture FIFO_CONFIG_v2_arch of FIFO_CONFIG_v2 is
+type FIFO_CONFIG_ARRAY is array (0 to FIFOCONFIG_WIDTH-1) of std_logic; -- create an array of size 0 to 7 (8 bits)
 shared variable FIFO_CONFIG_BUS : FIFO_CONFIG_ARRAY;
 begin
 
 	process (clk)
 	begin
-		if rising_edge(clk) then
-			if (samp = '1') then
-				FIFO_CONFIG_BUS(6) := '1';
-			elsif (samp = '0') then
-				FIFO_CONFIG_BUS(6) := '0';
+		if rising_edge(clk) then -- On rising edge of clock
+			if (reset = 3) then -- If SPI sends integer 3 then reset
+				FIFO_CONFIG_BUS(7) := '1'; -- Set the resetout to 1
+				FIFO_CONFIG_BUS(6) := '0'; -- Set the sampout to 0
+			elsif (reset /= 2) then -- If SPI sendns anything other than 3
+				FIFO_CONFIG_BUS(7) := '0'; -- Set the resetout to 0
+				if (samp = 4) then -- if sPI sends integer 4..
+					FIFO_CONFIG_BUS(6) := '1'; -- Set the sampout to 1
+				end if;
 			end if;
 				
-			if (reset = '1') then
-				FIFO_CONFIG_BUS(7) := '1';
-			elsif (reset = '0') then
-				FIFO_CONFIG_BUS(7) := '0';
-			end if;
-				
-			if (avail = '1') then
-				FIFO_CONFIG_BUS(0) := '1';
-			elsif (avail = '0') then
+			if (avail = '1') then -- If ready pin recives a 1
+				FIFO_CONFIG_BUS(0) := '1'; -- Set readyout pin to 1
+			elsif (avail = '0') then -- Otherwise set to 0
 				FIFO_CONFIG_BUS(0) := '0';
 			end if;
 				
-			if (overflow = '1') then
-				FIFO_CONFIG_BUS(1) := '1';
-			elsif (overflow = '0') then
+			if (overflow = '1') then -- If overflow pin recives a 1
+				FIFO_CONFIG_BUS(1) := '1'; -- Set overflowout pin to 1
+			elsif (overflow = '0') then -- Otherwise set to 0
 				FIFO_CONFIG_BUS(1) := '0';
 			end if;
 		end if;
 	end process;
 	
-	process (clk)
+	process (clk) -- EVERY CLOCK EDGE
 	begin
-	if (load = '1') then
-		sampout <= FIFO_CONFIG_BUS(6);
-		resetout <= FIFO_CONFIG_BUS(7);
-		availout <= FIFO_CONFIG_BUS(0);
-		overflowout <= FIFO_CONFIG_BUS(1);
-	end if;
+		sampout <= FIFO_CONFIG_BUS(6); -- Set sampout to correct bus
+		resetout <= FIFO_CONFIG_BUS(7); -- Set resetout to correct bus
+		availout <= FIFO_CONFIG_BUS(0); -- Set readyout to correct bus
+		overflowout <= FIFO_CONFIG_BUS(1); -- Set overflowout to correct bus
 	end process;
 
-end FIFO_CONFIG_ARCH;
+end FIFO_CONFIG_v2_arch;
