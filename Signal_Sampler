@@ -2,283 +2,81 @@ LIBRARY ieee;
 USE ieee.std_logic_1164.all;
 USE ieee.std_logic_arith.all;
 
-entity SIGNAL_SAMPLING is
+entity CLK_MANIP_V2 is
 	generic
-	(
-		COUNTER  : integer := 50
+	(	
+		clock_divider  : integer := 50         --scaler value [50MHz/50 = 1MHz]
 	);
 
 	port
 	(
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
--- Input ports
-
-		RESET							: in  std_logic;			-- asynchrounous active LOW 
-		SCLK_IN     				: in  std_logic;			-- input SCLK from freq_div		
-		ADC_INPUT		   		: in std_logic_vector(2 downto 0);		-- analog signals via the eight analog input pins IN0 through IN7;	
-		EN_SAMPLING			      : in  std_logic;			-- input command from the MCU
-		EN_CONTINUOUS_SAMPLING	: in std_logic;
-
--- Output ports
-
-		--MY_RISING_EDGE				: out std_logic;			-- custom clock's rising edge	
-		--MY_FALLING_EDGE			   : out std_logic;			-- custom clock's falling edge
+		SCLK				: in  std_logic;			--input FPGA clock [50MHz]
+		RESET				: in  std_logic;			--asynchrounous active LOW 
 		
-		--PULSE							: out std_logic;
-		--RUN_TEST						: out std_logic;
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		
-		MOSI							: out std_logic;
-		DATA_OUT						: out std_logic_vector(11 downto 0);	-- SAMPLES GENERATED
-		ADC_CHANNEL					: out std_logic_vector(2 downto 0);		-- the sampled ADC channel
-		
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------	
-		
-		SCLK_ADC						: out std_logic;			-- 1Mhz reduced freq to ADC
-		SS_ADC						: out std_logic			-- the slave select to ADC
-		
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	);
-end SIGNAL_SAMPLING;
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-architecture ARCH_0 of SIGNAL_SAMPLING is
-		
-		signal	R_RISING						: std_logic;
-		signal	R_FALLING					: std_logic;
-		
-		signal	R_ENABLE_SAMPLING			: std_logic;
-		signal	R_ENABLE_COUNTER			: std_logic;
-		signal	R_SAMPLING_RUNNING		: std_logic;
-		signal	R_CLOCK_EDGE_COUNTER		: integer range 0 to COUNTER := 0;	
-		
-		signal	R_ADC_IN       			: std_logic_vector(2 downto 0);
-		signal	R_ADC_12					   : std_logic_vector(11 downto 0);
-		signal	R_MISO						: std_logic;
-
-		signal	R_SIEXTIENE       		: std_logic;
-		constant CLOCK_CYCLES            : integer  := 16;
-		signal	CLOCK_CYCLES_COUNTER		: integer range 0 to CLOCK_CYCLES-1;
-begin	
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
--- SAMPLING CONTROL
-
-process (SCLK_IN, RESET)
-begin
-		if(RESET = '0') then
-			R_ENABLE_COUNTER		<=	'0';
-			R_ENABLE_SAMPLING		<=	'0';
-			R_SAMPLING_RUNNING	<=	'0';
+		CS					: out std_logic;			-- chip select
+		SCLK_OUT			: out std_logic         --1Mhz reduced freq to ADC
+		);
 			
-		elsif(rising_edge(SCLK_IN)) then
-			R_ENABLE_SAMPLING    <= EN_SAMPLING;
-			
-			if(R_ENABLE_SAMPLING = '1') then
-				R_SAMPLING_RUNNING <= '1';
-				
-			elsif(R_ENABLE_SAMPLING = '0') and (R_SIEXTIENE = '1') then
-				R_SAMPLING_RUNNING	<=	'0';
-			end if;
-			
-			R_ENABLE_COUNTER 	<=	R_SAMPLING_RUNNING;
-	end if;
-end process;
+end entity;
 
---RUN_TEST		<=	R_SAMPLING_RUNNING;
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
--- CREATING CUSTOM CLOCK
-
-process (SCLK_IN, RESET)
-begin
-
-	if(RESET = '0') then 
+architecture freq_divider_V2 of CLK_MANIP_V2 is
 	
-		SCLK_ADC		<= '1';           					-- [ CPOL = 1 ].
-		SS_ADC		<= '1';									-- SS is Active LOW so it is HIGH in RESET state.
-		
-	elsif(falling_edge(SCLK_IN)) then	--rising_edge
-		SS_ADC		<= not R_SAMPLING_RUNNING;			--  
-				
-	if(R_ENABLE_COUNTER = '1') then 						-- The reduced clock is made here. The "R_RISING" and the "R_FALLING" are   
-      if(R_RISING = '1') then								-- half clock cycles apart and they have equal duty cycles.			
-        SCLK_ADC   <= '1';
-      
-		elsif(R_FALLING = '1') then
-        SCLK_ADC   <= '0';
-      end if;
-		
-		else
-			SCLK_ADC   <= '1';
-		end if;
-		
-	end if;
-end process;
+	signal	new_wave					: std_logic;
+	signal	CS_REGISTER					: std_logic;
+	signal	slave_counter_reg		: integer range 0 to clock_divider := 0;
+	signal	clock_counter_reg		: integer range 0 to clock_divider := 0;		
 
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
--- CREATING RISING & FALLING EDGES
-
-process (SCLK_IN, RESET)
 begin
-
-	if(RESET = '0') then 
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------	
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+process (SCLK, RESET)
+begin
 		
-		   R_CLOCK_EDGE_COUNTER	   <=  0 ;                        
-			R_FALLING					<= '0';
-			R_RISING						<= '0';
+		if(RESET = '1') then 
+			clock_counter_reg	<=  0 ;
+			new_wave				<=	'1';
 			
+		elsif(rising_edge(SCLK)) then
+		
+			if(clock_counter_reg  = (clock_divider/2)-1) then         --[clock_divider/2 = 25] the answer 25 subtract 1 gives 24 ...
+																						 --... counter starts counting from 0 & finishes at 24 and thats 25 values.
+				clock_counter_reg <= 0;											 --after incrementing to 24 RESET the values back to 0 and restart counting.
+				new_wave		   	<= not new_wave;							 --after a full count, toggle the state of the value to create a square wave.
+			else
+				clock_counter_reg <= clock_counter_reg + 1;            --increment values from 0 - 24 by adding a 1 after every value.
+			end if;
+		end if;
+	end process;
+	
+	SCLK_OUT <=  new_wave;                                             --assign SCLK_OUT to the toggled value above (new_wave). Thus our new clock out with reduced freq. 
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------	
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+process (SCLK, RESET)
+begin
+		
+		if(RESET = '1') then 
+			slave_counter_reg	<=  0 ;
+			CS_REGISTER			<=	'1';
 			
-	elsif(rising_edge(SCLK_IN)) then
-		if(R_ENABLE_COUNTER = '1') then
-			if(R_CLOCK_EDGE_COUNTER  =  (COUNTER/2)-1) then					-- This part only counts half of the "COUNTER" values 
-																							-- because the opposite falling edges are half clock cycle apart,
-				R_CLOCK_EDGE_COUNTER  <= R_CLOCK_EDGE_COUNTER + 1;			-- the other clock edge counts all "COUNTER" values. 
-				R_FALLING				<= '1';
-				R_RISING					<= '0';
+		elsif(rising_edge(SCLK)) then
 			
-			elsif(R_CLOCK_EDGE_COUNTER = (COUNTER-1)) then					-- Now this is the part that counts all "COUNTER" values 
-				R_CLOCK_EDGE_COUNTER	<=  0 ;										-- to create another clock edge.
-				R_FALLING				<= '0';
-				R_RISING					<= '1';
+			if(slave_counter_reg  = (clock_divider-40)) then
+	
+				slave_counter_reg		<=  0 ;
+				CS_REGISTER				<=	'0';
 				
 			else
-				R_CLOCK_EDGE_COUNTER  <= R_CLOCK_EDGE_COUNTER + 1;
-				R_FALLING				<= '0';
-				R_RISING					<= '0';
+					slave_counter_reg <= slave_counter_reg + 1; 
+			
 			end if;
-			
-			else
-				R_CLOCK_EDGE_COUNTER		<=  0 ;									-- All the registers are always low until the "COUNTER" finish counting.
-				R_FALLING					<= '0';
-				R_RISING					   <= '0';
-		end if;	
-	end if;
-end process;
-
---MY_RISING_EDGE		<=		R_RISING;												-- Sending the output values to be observed on the VWF,
---MY_FALLING_EDGE	<=		R_FALLING;												-- and asserting them as outputs that can be used for the ADC.
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
--- SIXTEEN CLOCK CYCLE PROCESS
-
-process (SCLK_IN, RESET)
-begin
-	
-		if(RESET = '0') then
-		
-			CLOCK_CYCLES_COUNTER  <=  0 ;
-			R_SIEXTIENE				 <= '0'; 
-			
-		elsif(rising_edge(SCLK_IN)) then
-			if(R_ENABLE_COUNTER = '1') then
-				if(R_RISING = '1') then
-					if(CLOCK_CYCLES_COUNTER < CLOCK_CYCLES-1) then
-				
-						CLOCK_CYCLES_COUNTER  <= CLOCK_CYCLES_COUNTER + 1; 
-						R_SIEXTIENE				 <= '0';									-- The wave created here is only HIGH after the counter stops counting.
-																								-- It immediately switches back to LOW when the counter starts recounting again. 
-					else
-						CLOCK_CYCLES_COUNTER  <=  0 ;
-						R_SIEXTIENE				 <= '1';
-						
-					end if;
-					else
-						R_SIEXTIENE  			 <= '0';
-						
-					end if;
-					else
-						CLOCK_CYCLES_COUNTER  <=  0 ;
-						R_SIEXTIENE  			 <= '0';
 		end if;
-	end if;
 end process;
 
---PULSE <= R_SIEXTIENE;		-- Shows a pulse in VWF after counting '16' 1MHz clock cycles.
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+CS <=  CS_REGISTER; 
 
--- COMMUNICATING WITH ADC
-
-process (SCLK_IN, RESET)
-begin
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------	
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------	
+		
 	
-		if(RESET = '0') then
-		
-			MOSI				<=	'1';                          -- ******
-		--	PULSE				<=	'0';
-			ADC_CHANNEL		<= (others=>'0');
-			DATA_OUT			<= (others=>'0');
-			
-
-		elsif(rising_edge(SCLK_IN)) then
-		
-			if(R_SIEXTIENE = '1') then	
-			
-				ADC_CHANNEL		<=	R_ADC_IN;
-				DATA_OUT			<=	R_ADC_12;
-				
-			end if;
-			
-			
-			
-		if(R_FALLING = '1') then
-			case CLOCK_CYCLES_COUNTER is	
-			  when  2  => MOSI <= R_ADC_IN(2);
-			  when  3  => MOSI <= R_ADC_IN(1);
-			  when  4  => MOSI <= R_ADC_IN(0);
-			  when others => NULL;
-			end case;
-		end if;	
-	end if;
-end process;
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	
-process (SCLK_IN, RESET)
-begin
-	
-		if(RESET = '0') then
-		
-			R_MISO            <= '0';
-			R_ADC_IN		   	<=	(others=>'0');
-			R_ADC_12				<=	(others=>'0');
-			
-		elsif(rising_edge(SCLK_IN)) then	
-		
-			R_MISO				<= EN_CONTINUOUS_SAMPLING;
-			
-		if(R_SIEXTIENE = '1') then	
-			
-			R_ADC_IN			   <= ADC_INPUT;
-			
-		end if;
-		
-		case CLOCK_CYCLES_COUNTER is
-			when  4  => R_ADC_12(11)  <= R_MISO;
-			when  5  => R_ADC_12(10)  <= R_MISO;
-			when  6  => R_ADC_12( 9)  <= R_MISO;
-			when  7  => R_ADC_12( 8)  <= R_MISO;
-			when  8  => R_ADC_12( 7)  <= R_MISO;
-			when  9  => R_ADC_12( 6)  <= R_MISO;
-			when 10  => R_ADC_12( 5)  <= R_MISO;
-			when 11  => R_ADC_12( 4)  <= R_MISO;
-			when 12  => R_ADC_12( 3)  <= R_MISO;
-			when 13  => R_ADC_12( 2)  <= R_MISO;
-			when 14  => R_ADC_12( 1)  <= R_MISO;
-			when 15  => R_ADC_12( 0)  <= R_MISO;
-			when others => NULL;
-		end case;
-	end if;
-end process;
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-end ARCH_0;
-
+end freq_divider_V2;
