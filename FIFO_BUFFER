@@ -1,0 +1,66 @@
+library ieee;
+use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
+
+
+entity FIFO is
+	generic
+	(
+		FIFOwidth	: integer  :=	8;
+		DATAwidth   : integer  :=  16
+	);
+
+	port
+	(
+		-- Input ports
+		clk	   : in  std_logic;
+		reset	   : in  std_logic;
+		data_rd	: in  std_logic;
+		data_wr  : in  std_logic;
+		data_in  : in  std_logic_vector (DATAwidth-1 downto 0);
+
+		-- Output port
+		data_out	  : out std_logic_vector (DATAwidth-1 downto 0);
+		space_remain : out std_logic_vector (3 downto 0);
+		error 	  : out std_logic
+	);
+end entity;
+
+architecture FIFO_arch of FIFO is
+
+type FIFOarray is array (0 to FIFOwidth-1) of std_logic_vector (DATAwidth-1 downto 0);
+shared variable Array_bus : FIFOarray;
+shared variable counter	  : integer range 15 downto 0 := 0;
+
+begin
+	process (clk,data_rd,data_wr,reset)
+	begin
+		if rising_edge(clk) then
+			if (reset = '1')  then
+				Array_bus := (others => (others=>'0'));
+				counter := 0;
+				
+			elsif (reset = '0')then
+				if (data_wr = '1') then
+					Array_bus(counter) := data_in;
+					counter := counter + 1;
+					space_remain <= STD_LOGIC_VECTOR(TO_UNSIGNED(counter, 4));
+					
+				elsif (data_rd = '1') then
+					data_out <= Array_bus(0);
+					Array_bus(0) := (others =>'0');
+					counter := counter - 1;
+					space_remain <= STD_LOGIC_VECTOR(TO_UNSIGNED(counter, 4));
+					for I in 1 to (FIFOwidth-1) loop
+						Array_bus(I-1) := Array_bus(I);
+					end loop;
+				end if;
+			end if;
+		end if;
+		
+		space_remain <= STD_LOGIC_VECTOR(TO_UNSIGNED(counter, 4));
+		
+	end process;
+
+
+end FIFO_arch;
