@@ -1,0 +1,40 @@
+library ieee;
+use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
+
+
+entity SAMPLER is
+	port
+	(
+		-- Input ports
+		CLK	  : in  std_logic;
+		INPUT	  : in  std_logic;
+
+		-- Output port
+		OUTPUT	  : out std_logic_vector (11 downto 0)
+	);
+end entity;
+
+architecture SAMPLER_ARCH of SAMPLER is
+type OUTPUTarray is array (11 downto 0) of std_logic;
+shared variable OUTPUTarray_bus : OUTPUTarray;
+shared variable counter : integer range 15 downto 0 := 15;
+shared variable beforeOutput : std_logic_vector (11 downto 0);
+begin
+	process (CLK)
+	begin
+		if rising_edge(clk) then  
+			OUTPUTarray_bus(counter-1) := INPUT;
+			counter := counter - 1;
+			
+			if (counter = 0) then
+				for I in 0 to 11 loop
+					beforeOutput(I) := OUTPUTarray_bus(I);
+				end loop;
+				OUTPUT <= beforeOutput;
+				counter := 12;
+				OUTPUTarray_bus := (others => '0');
+			end if;
+		end if;
+	end process;
+end SAMPLER_ARCH;
