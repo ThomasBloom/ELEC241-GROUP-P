@@ -1,46 +1,77 @@
+--------------------------------------------
+--========================================--
+--=  This is a shift register in charge  =--
+--=   of converting a std_logic_vecoter  =--
+--=  into a series of bits, ready for    =--
+--=         the MCU to read them.        =--
+--========================================--
+--------------------------------------------
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
-entity shift_register_space_available is
+entity shift_register_ptos is
 	port
 	(
 		-- Input ports
-		CLK	: in  std_logic;
-		DATAIN	: in  std_logic_vector(3 downto 0);
-		spi_data : in  integer range 7 downto 0; 
-		DATAOUT	: out std_logic
+		CLK	: in  std_logic; -- Input CLK
+		DATAIN	: in  std_logic_vector(11 downto 0); -- Data in from FIFO buffer 
+		Space_IN	: in  std_logic_vector(3 downto 0); -- Data in from Space_available register
+		spi_data : in  integer range 7 downto 0; -- SPI data in
+		DATAOUT	: out std_logic -- Data out
 	);
 end entity;
 
-architecture shift_register_space_available_arch of shift_register_space_available is
+architecture shift_register_ptos_arch of shift_register_ptos is
 
-type OUTPUTarray is array (3 downto 0) of std_logic;
+type OUTPUTarray is array (11 downto 0) of std_logic; -- Create an array of 12 bits to store the 12 bit FIFO buffer data
 shared variable OUTPUTarray_bus : OUTPUTarray;
-shared variable counter : integer range 4 downto 0 := 4;
-shared variable nomoresample : std_logic := '0';
+shared variable counter : integer range 12 downto 0 := 12; -- Create a couter to count down from the 12 bits
+shared variable nomoresample : std_logic := '0'; -- Create a "true or false" pin
 
+type OUTPUTarray_space is array (3 downto 0) of std_logic; -- Create an array of 4 bits to store the 4 bit Space data
+shared variable OUTPUTarray_bus_space : OUTPUTarray_space;
+shared variable space_counter : integer range 4 downto 0 := 4; -- Create a coutner to count down from the 4 bits
+shared variable nomoresample_space : std_logic := '0'; -- Create a "true or false" pin
 begin
 	process (CLK)
 	begin
-		if rising_edge(clk) then 
-			if (spi_data = 1) then
-				if (nomoresample = '0') then
-					nomoresample := '1';
-					for I in 0 to 3 loop
-						OUTPUTarray_bus(I) := DATAIN(I);
+		if rising_edge(clk) then  -- On rising clock edge..
+			if (spi_data = 1) then -- If SPI asks to read..
+				if (nomoresample = '0') then -- If nomoresampling is false
+					nomoresample := '1'; -- Set nomoresampling to true
+					for I in 0 to 11 loop -- Enter loop to cycle through 0 to 11.
+						OUTPUTarray_bus(I) := DATAIN(I); -- FIFO buffer array (position) is set to data in (position)
 					end loop;
 				end if;
 			
-				DATAOUT <= OUTPUTarray_bus(counter-1);
-				counter := counter - 1;
-				if (counter = 0) then
-					OUTPUTarray_bus := (others => '0');
-					nomoresample := '0';
-					counter := 4;
+				DATAOUT <= OUTPUTarray_bus(counter-1); -- Data out is set to the outputarray (position)
+				counter := counter - 1; -- Counter subtracts 1
+				if (counter = 0) then -- If counter is 0..
+					OUTPUTarray_bus := (others => '0'); -- Clear the array bus
+					nomoresample := '0'; -- Set nomoresamples to false
+					counter := 12; -- Reset the counter
 				end if;
 			end if;
+			------------------------------------------------------------------
+			if (spi_data = 5) then -- If SPI asks for space_available
+				if (nomoresample_space = '0') then -- If nomoresampling is false
+					nomoresample_space := '1'; -- Set nomoresampling to true
+					for I in 0 to 3 loop -- enter loop to cycle through 0 to 3
+						OUTPUTarray_bus_space(I) := Space_IN(I); -- space array (position) is set to the space data in (position)
+					end loop;
+				end if;
+			
+				DATAOUT <= OUTPUTarray_bus_space(space_counter-1); -- Data out is set to the output array (position
+				space_counter := space_counter - 1; -- Counter subtracts 1
+				if (space_counter = 0) then -- If counter is 0..
+					OUTPUTarray_bus_space := (others => '0'); -- Clear the array bus
+					nomoresample_space := '0'; -- Set nomoresamples to false
+					space_counter := 4; -- Reset the counter
+				end if;
+			end if;
+			
 		end if;
 	end process;
 
-end shift_register_space_available_arch;
+end shift_register_ptos_arch;
