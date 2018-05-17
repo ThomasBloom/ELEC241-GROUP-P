@@ -1,0 +1,40 @@
+library ieee;
+use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
+
+
+entity shift_register_stop is
+	port
+	(
+		-- Input ports
+		CLK	  : in  std_logic;
+		INPUT	  : in  std_logic;
+
+		-- Output port
+		OUTPUT	  : out std_logic_vector (1 downto 0)
+	);
+end entity;
+
+architecture shift_register_stop_arch of shift_register_stop is
+type OUTPUTarray is array (1 downto 0) of std_logic;
+shared variable OUTPUTarray_bus : OUTPUTarray;
+shared variable counter : integer range 2 downto 0 := 2;
+shared variable beforeOutput : std_logic_vector (1 downto 0);
+begin
+	process (CLK)
+	begin
+		if rising_edge(clk) then  
+			OUTPUTarray_bus(counter-1) := INPUT;
+			counter := counter - 1;
+			
+			if (counter = 0) then
+				for I in 0 to 1 loop
+					beforeOutput(I) := OUTPUTarray_bus(I);
+				end loop;
+				OUTPUT <= beforeOutput;
+				counter := 2;
+				OUTPUTarray_bus := (others => '0');
+			end if;
+		end if;
+	end process;
+end shift_register_stop_arch;
