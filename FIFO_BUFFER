@@ -3,64 +3,92 @@ use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
 
-entity FIFO is
+entity FIFO_V2 is
 	generic
 	(
 		FIFOwidth	: integer  :=	8;
-		DATAwidth   : integer  :=  16
+		DATAwidth   : integer  :=  12 --15
 	);
 
 	port
 	(
 		-- Input ports
 		clk	   : in  std_logic;
-		reset	   : in  std_logic;
-		data_rd	: in  std_logic;
-		data_wr  : in  std_logic;
-		data_in  : in  std_logic_vector (DATAwidth-1 downto 0);
+		samp		: in	std_logic;
+		reset		: in	std_logic;
+		spi_data : in  integer range 3 downto 0 := 0; 
+		data_in  : in  std_logic_vector (11	downto 0);
 
 		-- Output port
-		data_out	  : out std_logic_vector (DATAwidth-1 downto 0);
+		data_out	  : out std_logic_vector (11 downto 0);
 		space_remain : out std_logic_vector (3 downto 0);
-		error 	  : out std_logic
+		overflow	  : out std_logic;
+		ready		  : out std_logic
 	);
 end entity;
 
-architecture FIFO_arch of FIFO is
+architecture FIFO_arch_v2 of FIFO_V2 is
 
 type FIFOarray is array (0 to FIFOwidth-1) of std_logic_vector (DATAwidth-1 downto 0);
-shared variable Array_bus : FIFOarray;
-shared variable counter	  : integer range 15 downto 0 := 0;
-
+shared variable FIFO_Array_bus : FIFOarray;
+shared variable FIFOcounter	 : integer range 0 to FIFOwidth := 0; --15 downto 0
+shared variable counter			 : integer range 13 downto 0 := 13; ------
 begin
-	process (clk,data_rd,data_wr,reset)
+	process (clk, spi_data)
 	begin
-		if rising_edge(clk) then
-			if (reset = '1')  then
-				Array_bus := (others => (others=>'0'));
-				counter := 0;
-				
-			elsif (reset = '0')then
-				if (data_wr = '1') then
-					Array_bus(counter) := data_in;
-					counter := counter + 1;
-					space_remain <= STD_LOGIC_VECTOR(TO_UNSIGNED(counter, 4));
-					
-				elsif (data_rd = '1') then
-					data_out <= Array_bus(0);
-					Array_bus(0) := (others =>'0');
-					counter := counter - 1;
-					space_remain <= STD_LOGIC_VECTOR(TO_UNSIGNED(counter, 4));
-					for I in 1 to (FIFOwidth-1) loop
-						Array_bus(I-1) := Array_bus(I);
-					end loop;
+		if rising_edge(clk) then --Read Sample results
+			counter := counter - 1; -------
+			
+			if (counter = 0) then ----------
+				if (samp = '1') then
+					if (spi_data = 0) then				
+						if (FIFOcounter = FIFOwidth) then
+							-- DO NOTHING
+						elsif (FIFOcounter <= FIFOwidth-1) then
+							FIFO_Array_bus(FIFOcounter) := data_in;
+							FIFOcounter := FIFOcounter + 1;
+							ready <= '1'; ---------MAYBE NOT NEEDED
+						end if;
+						space_remain <= STD_LOGIC_VECTOR(TO_UNSIGNED(FIFOcounter, 4));
+						counter := 13; -----------
+	
+					elsif (spi_data = 1 or spi_data = 2) then --Write to SPI
+						if (FIFOcounter = 0) then
+							-- DO NOTHING
+						elsif (FIFOcounter >= 1) then
+							data_out <= FIFO_Array_bus(0);
+							FIFOcounter := FIFOcounter - 1;
+							overflow <= '0'; ---------MAYBE NOT NEEDED
+							for I in 1 to (FIFOwidth-1) loop
+								FIFO_Array_bus(I-1) := FIFO_Array_bus(I);
+							end loop;
+						end if;
+						space_remain <= STD_LOGIC_VECTOR(TO_UNSIGNED(FIFOcounter, 4));
+						counter := 13; ----------
+			
+					elsif (reset = '1') then --Reset the device
+						FIFO_Array_bus := (others => (others=>'0'));
+						data_out <= FIFO_Array_bus(0);
+						FIFOcounter := 0;
+						overflow <= '0';
+						ready <= '0';
+						space_remain <= STD_LOGIC_VECTOR(TO_UNSIGNED(FIFOcounter, 4));
+						counter := 13; ---------
+					end if;
 				end if;
+			end if;-------
+			
+			if (FIFOcounter = 0) then
+				overflow <= '0';
+				ready <= '0';
+			elsif (FIFOcounter > 0 and FIFOcounter < FIFOwidth) then
+				overflow <= '0';
+				ready <= '1';
+			elsif (FIFOcounter = FIFOwidth) then
+				overflow <= '1';
+				ready <= '1';
 			end if;
 		end if;
-		
-		space_remain <= STD_LOGIC_VECTOR(TO_UNSIGNED(counter, 4));
-		
 	end process;
-
-
-end FIFO_arch;
+	
+end FIFO_arch_v2;
