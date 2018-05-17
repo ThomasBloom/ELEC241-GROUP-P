@@ -1,40 +1,49 @@
+--------------------------------------------
+--========================================--
+--=  This is a shift register in charge  =--
+--=  of converting an integer of 8 bits  =--
+--=  to a std_logic_vector of 3 bits.    =--
+--=   Converts SPI serial to Parrallel   =--
+--========================================--
+--------------------------------------------
+
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
 
-entity shift_register_stop is
+entity shift_register_int_to_STDLOGICVECTOR is
 	port
 	(
 		-- Input ports
-		CLK	  : in  std_logic;
-		INPUT	  : in  std_logic;
+		CLK	  : in  std_logic;	-- Input CLOCK
+		INPUT	  : in  std_logic; -- Input incoming SPI serial data
 
 		-- Output port
-		OUTPUT	  : out std_logic_vector (1 downto 0)
+		OUTPUT	  : out std_logic_vector (2 downto 0) 	--Output std_logic_vector of size 3
 	);
 end entity;
 
-architecture shift_register_stop_arch of shift_register_stop is
-type OUTPUTarray is array (1 downto 0) of std_logic;
+architecture shift_register_int_to_STDLOGICVECTOR_ARCH of shift_register_int_to_STDLOGICVECTOR is
+type OUTPUTarray is array (7 downto 0) of std_logic; -- Create an array to store all 16 pulses of the clock
 shared variable OUTPUTarray_bus : OUTPUTarray;
-shared variable counter : integer range 2 downto 0 := 2;
-shared variable beforeOutput : std_logic_vector (1 downto 0);
+shared variable counter : integer range 8 downto 0 := 8; -- Create a counter to counter all 16 pulses of the clock
+shared variable beforeOutput : std_logic_vector (2 downto 0); -- Create a variable to store the output
 begin
 	process (CLK)
 	begin
-		if rising_edge(clk) then  
-			OUTPUTarray_bus(counter-1) := INPUT;
-			counter := counter - 1;
+		if rising_edge(clk) then  -- On a rising edge..
+			OUTPUTarray_bus(counter-1) := INPUT; -- Output position (counter - 1) is set to the input. Starting at 16-1.
+			counter := counter - 1; -- Counter subtracts one 
 			
-			if (counter = 0) then
-				for I in 0 to 1 loop
-					beforeOutput(I) := OUTPUTarray_bus(I);
+			if (counter = 0) then -- If counter is 0, eg 16 clock pulses..
+				for I in 0 to 2 loop -- Enter a 3 loop
+					beforeOutput(I) := OUTPUTarray_bus(I); -- Output(position) is set to array(position)
 				end loop;
-				OUTPUT <= beforeOutput;
-				counter := 2;
-				OUTPUTarray_bus := (others => '0');
+				OUTPUT <= beforeOutput; -- Output is set to array output
+				counter := 8; -- Reset counter
+				OUTPUTarray_bus := (others => '0'); -- Clear the array
 			end if;
 		end if;
 	end process;
-end shift_register_stop_arch;
+end shift_register_int_to_STDLOGICVECTOR_ARCH;
